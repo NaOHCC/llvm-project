@@ -2380,7 +2380,7 @@ def HoistRedundantVectorTransfersOp :
   let extraClassDeclaration = [{
     ::mlir::DiagnosedSilenceableFailure applyToOne(
          ::mlir::transform::TransformRewriter &rewriter,
-         ::mlir::func::FuncOp target,
+         ::mlir::FunctionOpInterface target,
          ::mlir::transform::ApplyToEachResultList &results,
          ::mlir::transform::TransformState &state);
    }];

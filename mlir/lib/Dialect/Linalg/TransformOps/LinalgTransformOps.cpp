@@ -37,6 +37,7 @@
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
@@ -3594,7 +3595,7 @@ LogicalResult transform::VectorizeOp::verify() {
 
 DiagnosedSilenceableFailure
 transform::HoistRedundantVectorTransfersOp::applyToOne(
-    transform::TransformRewriter &rewriter, func::FuncOp target,
+    transform::TransformRewriter &rewriter, mlir::FunctionOpInterface target,
     transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
   // WARNING: This hoisting does not model parallelism and is generally
