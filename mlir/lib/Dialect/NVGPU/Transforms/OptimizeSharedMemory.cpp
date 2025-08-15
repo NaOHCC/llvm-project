@@ -131,13 +131,14 @@ getShmReadAndWriteOps(Operation *parentOp, Value shmMemRef,
   // Restrict to a supported set of ops. We also require at least 2D access,
   // although this could be relaxed.
   if (llvm::any_of(readOps, [](Operation *op) {
-        return !isa<memref::LoadOp, vector::LoadOp, nvgpu::LdMatrixOp>(op) ||
+        return !isa<memref::LoadOp, vector::LoadOp, nvgpu::LdMatrixOp,
+                    vector::TransferReadOp>(op) ||
                getIndices(op).size() < 2;
       }))
     return failure();
   if (llvm::any_of(writeOps, [](Operation *op) {
-        return !isa<memref::StoreOp, vector::StoreOp, nvgpu::DeviceAsyncCopyOp>(
-                   op) ||
+        return !isa<memref::StoreOp, vector::StoreOp, nvgpu::DeviceAsyncCopyOp,
+                    vector::TransferWriteOp>(op) ||
                getIndices(op).size() < 2;
       }))
     return failure();
