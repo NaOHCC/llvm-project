@@ -78,6 +78,9 @@ static bool isLikelyAnIndexComputation(Operation *op) {
          isa<memref::DimOp, arith::SelectOp, arith::CmpIOp>(op);
 }
 
+/// Try sink memref.alloc into kernel
+static bool isSpecializedOp(Operation *op) { return isa<memref::AllocOp>(op); }
+
 /// For a given operation `op`, computes whether it is beneficial to sink the
 /// operation into the kernel. An operation can be sunk if doing so does not
 /// introduce new kernel arguments. Whether a value is already available in the
@@ -97,7 +100,7 @@ static bool extractBeneficiaryOps(
   if (beneficiaryOps.count(op))
     return true;
 
-  if (!isSinkingBeneficiary(op))
+  if (!isSinkingBeneficiary(op) && !isSpecializedOp(op))
     return false;
 
   for (Value operand : op->getOperands()) {
@@ -150,6 +153,12 @@ LogicalResult mlir::sinkOperationsIntoLaunchOp(
     for (auto pair : llvm::zip(op->getResults(), clonedOp->getResults()))
       replaceAllUsesInRegionWith(std::get<0>(pair), std::get<1>(pair),
                                  launchOp.getBody());
+    // only sink memref.alloc which has a GPU address space attr
+    if (auto allocOp = dyn_cast<memref::AllocOp>(op)) {
+      auto space = allocOp.getType().getMemorySpace();
+      if (dyn_cast_or_null<gpu::AddressSpaceAttr>(space))
+        op->erase();
+    }
   }
   return success();
 }
