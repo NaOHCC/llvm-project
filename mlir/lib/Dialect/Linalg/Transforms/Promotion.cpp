@@ -18,14 +18,11 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -35,7 +32,6 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include <cstdint>
 
 using namespace mlir;
 using namespace mlir::linalg;
@@ -433,8 +429,6 @@ mlir::linalg::promoteSubViews(OpBuilder &builder, LinalgOp linalgOp,
   return res;
 }
 
-static int64_t MY_OFFSET = 0;
-
 /// Allocate the given subview to a memory address space in GPU by creating a
 /// allocation operation and setting the memref type address space to desired
 /// address space.
@@ -444,8 +438,7 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
   OpBuilder::InsertionGuard guard(builder);
 
   func::FuncOp funcOp = subview->getParentOfType<func::FuncOp>();
-  auto launchOpOp = subview->getParentOfType<gpu::LaunchOp>();
-  if (!funcOp || !launchOpOp)
+  if (!funcOp)
     return std::nullopt;
 
   // The subview size bounds are expected to be constant; they specify the shape
@@ -458,44 +451,15 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
     shape.push_back(value.getSExtValue());
   }
 
-  auto elNumBytes = subview.getType().getElementTypeBitWidth() / 8;
-  auto numBytes = std::accumulate(shape.begin(), shape.end(), 1,
-                                  std::multiplies<int64_t>()) *
-                  elNumBytes;
-  Value dynamicSharedMemoryOp;
-  funcOp.walk([&](gpu::DynamicSharedMemoryOp op) {
-    dynamicSharedMemoryOp = op;
-    return WalkResult::interrupt();
-  });
-
-  if (!dynamicSharedMemoryOp) {
-    builder.setInsertionPointToStart(&launchOpOp.getBody().front());
-    auto type = MemRefType::get(
-        ShapedType::kDynamic, builder.getI8Type(), MemRefLayoutAttrInterface{},
-        gpu::AddressSpaceAttr::get(builder.getContext(), addressSpace));
-    dynamicSharedMemoryOp =
-        (builder.create<gpu::DynamicSharedMemoryOp>(launchOpOp.getLoc(), type));
-  }
-  builder.setInsertionPoint(subview);
-  auto type = MemRefType::get(shape, subview.getType().getElementType(),
-                              MemRefLayoutAttrInterface{});
+  builder.setInsertionPointToStart(&funcOp.front());
+  auto type = MemRefType::get(
+      shape, subview.getType().getElementType(), MemRefLayoutAttrInterface{},
+      gpu::AddressSpaceAttr::get(builder.getContext(), addressSpace));
   Value buffer;
   if (addressSpace == gpu::GPUDialect::getWorkgroupAddressSpace()) {
-    Value offsetValue =
-        builder.create<arith::ConstantIndexOp>(subview.getLoc(), MY_OFFSET);
-    auto normalI8Type = MemRefType::get(
-        ShapedType::kDynamic, builder.getI8Type(), MemRefLayoutAttrInterface{});
-    auto operand = builder.create<memref::MemorySpaceCastOp>(
-        dynamicSharedMemoryOp.getLoc(), normalI8Type, dynamicSharedMemoryOp);
-
-    buffer = builder.create<memref::ViewOp>(subview.getLoc(), type, operand,
-                                            offsetValue, ArrayRef<Value>({}));
-    MY_OFFSET += numBytes;
-
+    buffer = builder.create<memref::AllocOp>(funcOp.getLoc(), type);
   } else if (addressSpace == gpu::GPUDialect::getPrivateAddressSpace()) {
-    auto gpuLaunchOp = subview->getParentOfType<gpu::LaunchOp>();
-    builder.setInsertionPointToStart(&gpuLaunchOp.getBody().front());
-    buffer = builder.create<memref::AllocaOp>(subview.getLoc(), type);
+    buffer = builder.create<memref::AllocaOp>(funcOp.getLoc(), type);
   } else {
     return std::nullopt;
   }
