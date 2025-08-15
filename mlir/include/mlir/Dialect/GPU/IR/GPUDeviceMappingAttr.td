@@ -228,6 +228,24 @@ def GPUThreadMappingAttr
   }];
 }
 
+def GPULaneMappingAttr
+    : GPU_Attr<"GPULaneMapping", "lane", [
+      DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ]> {
+  let parameters = (ins
+    EnumParameter<MappingIdEnum>:$lane
+  );
+  let assemblyFormat = "`<` params `>`";
+  let description = [{
+    An attribute that allows defining lane parallelism for GPU devices.
+
+    lane (aka work item) are grouped into a warp described by a 
+    3-dimensional rectangle.
+    This attribute indicates that thread parallelism is desired.
+    It can be consumed by lowering to generate GPU.
+
+  }];
+}
+
 def GPUMemorySpaceMappingAttr : GPU_Attr<"GPUMemorySpaceMapping", "memory_space", [
   DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ] >  {
   let parameters = (ins

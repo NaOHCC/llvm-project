@@ -32,6 +32,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -306,11 +307,14 @@ checkMappingAttributeTypes(std::optional<TransformOpInterface> transformOp,
                                      llvm::IsaPred<GPUWarpMappingAttr>);
   bool hasThreadMapping = llvm::any_of(forallOp.getMapping().value(),
                                        llvm::IsaPred<GPUThreadMappingAttr>);
+  bool hasLaneMapping = llvm::any_of(forallOp.getMapping().value(),
+                                     llvm::IsaPred<GPULaneMappingAttr>);
   int64_t countMappingTypes = 0;
   countMappingTypes += hasBlockMapping ? 1 : 0;
   countMappingTypes += hasWarpgroupMapping ? 1 : 0;
   countMappingTypes += hasWarpMapping ? 1 : 0;
   countMappingTypes += hasThreadMapping ? 1 : 0;
+  countMappingTypes += hasLaneMapping ? 1 : 0;
   if (countMappingTypes > 1) {
     return definiteFailureHelper(
         transformOp, forallOp,
@@ -323,7 +327,8 @@ checkMappingAttributeTypes(std::optional<TransformOpInterface> transformOp,
         "scf.forall op requires a mapping attribute of kind 'block'");
   }
   if (std::is_same<MappingKindType, ThreadMappingKind>::value &&
-      !hasThreadMapping && !hasWarpMapping && !hasWarpgroupMapping) {
+      !hasThreadMapping && !hasWarpMapping && !hasWarpgroupMapping &&
+      !hasLaneMapping) {
     return definiteFailureHelper(transformOp, forallOp,
                                  "scf.forall op requires a mapping attribute "
                                  "of kind 'thread' or 'warp'");
@@ -818,6 +823,44 @@ DiagnosedSilenceableFailure mlir::transform::gpu::mapOneForallToThreadsImpl(
         verifyGpuMapping<ThreadMappingKind>(transformOp, forallOp);
     if (!diag.succeeded())
       return diag;
+  }
+
+  if (llvm::any_of(forallOp.getMapping().value(),
+                   llvm::IsaPred<GPULaneMappingAttr>)) {
+    rewriter.setInsertionPoint(forallOp);
+    Location loc = forallOp->getLoc();
+    Value laneId = rewriter.create<LaneIdOp>(loc, /*upperBound=*/nullptr);
+
+    auto numParallelIterations =
+        getConstantIntValues(forallOp.getMixedUpperBound());
+    const SmallVector<int64_t> &tmpMappingSizes = numParallelIterations.value();
+    if (tmpMappingSizes.size() > 2)
+      return definiteFailureHelper(
+          transformOp, forallOp,
+          "lane_id only supports 2-D mapping, use other mapping");
+
+    int64_t stride = tmpMappingSizes[1]; // rightmost dimension change fastest
+    AffineExpr x;
+    auto *context = rewriter.getContext();
+    bindSymbols(context, x);
+
+    rewriter.eraseOp(forallOp.getTerminator());
+    if (tmpMappingSizes.size() == 2) {
+      auto laneIdx = rewriter.create<affine::AffineApplyOp>(
+          loc, AffineMap::get(0, 1, {x % stride}, context), ValueRange{laneId});
+      auto laneIdY = rewriter.create<affine::AffineApplyOp>(
+          loc, AffineMap::get(0, 1, {x.floorDiv(stride)}, context),
+          ValueRange{laneId});
+
+      rewriter.setInsertionPoint(forallOp);
+      rewriter.inlineBlockBefore(forallOp.getBody(), forallOp,
+                                 {laneIdY, laneIdx});
+    } else {
+      rewriter.setInsertionPoint(forallOp);
+      rewriter.inlineBlockBefore(forallOp.getBody(), forallOp, {laneId});
+    }
+    rewriter.eraseOp(forallOp);
+    return DiagnosedSilenceableFailure::success();
   }
 
   GpuIdBuilder gpuIdBuilder;
