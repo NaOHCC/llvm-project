@@ -438,9 +438,13 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
     gpu::AddressSpace addressSpace) {
   OpBuilder::InsertionGuard guard(builder);
 
+  // HACK: Get the containing operation for the subview.
+  auto forallOp = subview->getParentOfType<scf::ForallOp>();
   auto launchOp = subview->getParentOfType<gpu::LaunchOp>();
-  if (!launchOp)
+  auto funcOp = subview->getParentOfType<FunctionOpInterface>();
+  if (!forallOp && !launchOp && !funcOp)
     return std::nullopt;
+  Operation *containerOp = forallOp ? forallOp : launchOp ? launchOp : funcOp;
 
   // The subview size bounds are expected to be constant; they specify the shape
   // of the allocation.
@@ -452,15 +456,15 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
     shape.push_back(value.getSExtValue());
   }
 
-  builder.setInsertionPointToStart(&launchOp.getBody().front());
+  builder.setInsertionPointToStart(&containerOp->getRegion(0).front());
   auto type = MemRefType::get(
       shape, subview.getType().getElementType(), MemRefLayoutAttrInterface{},
       gpu::AddressSpaceAttr::get(builder.getContext(), addressSpace));
   Value buffer;
   if (addressSpace == gpu::GPUDialect::getWorkgroupAddressSpace()) {
-    buffer = builder.create<memref::AllocOp>(launchOp.getLoc(), type);
+    buffer = builder.create<memref::AllocOp>(containerOp->getLoc(), type);
   } else if (addressSpace == gpu::GPUDialect::getPrivateAddressSpace()) {
-    buffer = builder.create<memref::AllocaOp>(launchOp.getLoc(), type);
+    buffer = builder.create<memref::AllocaOp>(containerOp->getLoc(), type);
   } else {
     return std::nullopt;
   }
