@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
@@ -437,8 +438,8 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
     gpu::AddressSpace addressSpace) {
   OpBuilder::InsertionGuard guard(builder);
 
-  func::FuncOp funcOp = subview->getParentOfType<func::FuncOp>();
-  if (!funcOp)
+  auto launchOp = subview->getParentOfType<gpu::LaunchOp>();
+  if (!launchOp)
     return std::nullopt;
 
   // The subview size bounds are expected to be constant; they specify the shape
@@ -451,15 +452,15 @@ static std::optional<Value> allocateSubviewGPUMemoryInAddressSpace(
     shape.push_back(value.getSExtValue());
   }
 
-  builder.setInsertionPointToStart(&funcOp.front());
+  builder.setInsertionPointToStart(&launchOp.getBody().front());
   auto type = MemRefType::get(
       shape, subview.getType().getElementType(), MemRefLayoutAttrInterface{},
       gpu::AddressSpaceAttr::get(builder.getContext(), addressSpace));
   Value buffer;
   if (addressSpace == gpu::GPUDialect::getWorkgroupAddressSpace()) {
-    buffer = builder.create<memref::AllocOp>(funcOp.getLoc(), type);
+    buffer = builder.create<memref::AllocOp>(launchOp.getLoc(), type);
   } else if (addressSpace == gpu::GPUDialect::getPrivateAddressSpace()) {
-    buffer = builder.create<memref::AllocaOp>(funcOp.getLoc(), type);
+    buffer = builder.create<memref::AllocaOp>(launchOp.getLoc(), type);
   } else {
     return std::nullopt;
   }
