@@ -4190,6 +4190,31 @@ LogicalResult InlineAsmOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DialectTypeWidthInterface
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// An interface that can be implemented by dialects to provide the bit-width of
+/// a type.
+class LLVMDialectTypeWidthInterface : public DialectTypeWidthInterface {
+public:
+  using DialectTypeWidthInterface::DialectTypeWidthInterface;
+
+  std::optional<unsigned> getBitWidth(Type type) const override {
+    if (auto structType = llvm::dyn_cast<LLVMStructType>(type)) {
+      if (structType.isOpaque())
+        return 0;
+      unsigned totalWidth = 0;
+      for (Type subType : structType.getBody())
+        totalWidth += subType.getIntOrFloatBitWidth();
+      return totalWidth;
+    }
+    return std::nullopt;
+  }
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 
@@ -4217,6 +4242,9 @@ void LLVMDialect::initialize() {
   // Support unknown operations because not all LLVM operations are registered.
   allowUnknownOperations();
   declarePromisedInterface<DialectInlinerInterface, LLVMDialect>();
+
+  // Support for our own data layout specification.
+  addInterfaces<LLVMDialectTypeWidthInterface>();
 }
 
 #define GET_OP_CLASSES
