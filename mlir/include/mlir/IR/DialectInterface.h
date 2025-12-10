@@ -9,6 +9,7 @@
 #ifndef MLIR_IR_DIALECTINTERFACE_H
 #define MLIR_IR_DIALECTINTERFACE_H
 
+#include "mlir/IR/Types.h"
 #include "mlir/Support/TypeID.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -181,6 +182,22 @@ public:
 private:
   using detail::DialectInterfaceCollectionBase::interface_begin;
   using detail::DialectInterfaceCollectionBase::interface_end;
+};
+
+//===----------------------------------------------------------------------===//
+// DialectTypeWidthInterface
+//===----------------------------------------------------------------------===//
+
+/// An interface that can be implemented by dialects to provide the bit-width of
+/// a type.
+class DialectTypeWidthInterface
+    : public DialectInterface::Base<DialectTypeWidthInterface> {
+public:
+  DialectTypeWidthInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Returns the bit-width of the given type, or std::nullopt if the dialect
+  /// cannot provide it.
+  virtual std::optional<unsigned> getBitWidth(Type type) const = 0;
 };
 
 } // namespace mlir
