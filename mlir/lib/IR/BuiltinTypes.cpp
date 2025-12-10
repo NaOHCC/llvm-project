@@ -57,6 +57,11 @@ LogicalResult ComplexType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+unsigned ComplexType::getWidth() {
+  auto elType = getElementType();
+  return elType.getIntOrFloatBitWidth() * 2;
+}
+
 //===----------------------------------------------------------------------===//
 // Integer Type
 //===----------------------------------------------------------------------===//

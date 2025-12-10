@@ -72,6 +72,11 @@ def Builtin_Complex : Builtin_Type<"Complex", "complex"> {
   ];
   let skipDefaultBuilders = 1;
   let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    /// Return the bitwidth of this complex type.
+    unsigned getWidth();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
