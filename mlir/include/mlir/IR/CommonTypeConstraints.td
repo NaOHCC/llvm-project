@@ -931,4 +931,8 @@ def SignlessIntegerOrIndexOrFloatLike : TypeConstraint<Or<[
     SignlessIntegerOrIndexLike.predicate, FloatLike.predicate]>,
     "signless-integer-or-index-like or floating-point-like">;
 
+// Type constraint for complex-like types: complex numbers or value-semantics containers
+// of complex numbers.
+class ComplexLike<Type elType> : TypeOrValueSemanticsContainer<Complex<elType>, "complex-number-like">;
+
 #endif // COMMON_TYPE_CONSTRAINTS_TD
