@@ -120,6 +120,8 @@ public:
   bool isFloat() const;
   bool isFloat(unsigned width) const;
 
+  bool isComplex() const;
+
   /// Return true if this is an integer type (with the specified width).
   bool isInteger() const;
   bool isInteger(unsigned width) const;
@@ -152,6 +154,8 @@ public:
   /// Return true if this is an integer (of any signedness), index, or float
   /// type.
   bool isIntOrIndexOrFloat() const;
+
+  bool isIntOrFloatOrComplex() const;
 
   /// Print the current type.
   void print(raw_ostream &os) const;

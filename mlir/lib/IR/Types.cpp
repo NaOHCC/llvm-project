@@ -8,6 +8,7 @@
 
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectInterface.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -43,6 +44,8 @@ bool Type::isF80() const { return llvm::isa<Float80Type>(*this); }
 bool Type::isF128() const { return llvm::isa<Float128Type>(*this); }
 
 bool Type::isFloat() const { return llvm::isa<FloatType>(*this); }
+
+bool Type::isComplex() const { return llvm::isa<ComplexType>(*this); }
 
 /// Return true if this is a float type with the specified width.
 bool Type::isFloat(unsigned width) const {
@@ -117,11 +120,28 @@ bool Type::isIntOrFloat() const {
   return llvm::isa<IntegerType, FloatType>(*this);
 }
 
+bool Type::isIntOrFloatOrComplex() const {
+  return llvm::isa<IntegerType, FloatType, ComplexType>(*this);
+}
+
 bool Type::isIntOrIndexOrFloat() const { return isIntOrFloat() || isIndex(); }
 
 unsigned Type::getIntOrFloatBitWidth() const {
-  assert(isIntOrFloat() && "only integers and floats have a bitwidth");
+  // assert(isIntOrFloatOrComplex() &&
+  //        "only integers and floats and complex have a bitwidth");
+  if (auto complexType = llvm::dyn_cast<ComplexType>(*this))
+    return complexType.getWidth();
   if (auto intType = llvm::dyn_cast<IntegerType>(*this))
     return intType.getWidth();
-  return llvm::cast<FloatType>(*this).getWidth();
+  if (auto floatType = llvm::dyn_cast<FloatType>(*this))
+    return floatType.getWidth();
+
+  // Fallback to the dialect for types that we don't know about.
+  auto &dialect = getDialect();
+  if (auto *getBitWidth =
+          dialect.getRegisteredInterface<DialectTypeWidthInterface>())
+    if (auto width = getBitWidth->getBitWidth(*this))
+      return *width;
+
+  llvm_unreachable("unhandled type for getIntOrFloatBitWidth");
 }
